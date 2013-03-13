@@ -4,6 +4,25 @@ import argparse
 import xml.sax
 import zipfile
 
+recognized_text_properties = {
+  'fo:background-color',
+  'fo:color',
+  'fo:country', # NOT DISPLAYED
+  'fo:font-size',
+  'fo:font-weight',
+  'fo:hyphenate',
+  'fo:hyphenation-push-char-count',
+  'fo:hyphenation-remain-char-count',
+  'fo:language', # NOT DISPLAYED
+  'fo:text-shadow',
+  'style:font-name',
+  'style:font-relief',
+  'style:text-underline-color',
+  'style:text-underline-style',
+  'style:text-underline-width',
+  'style:use-window-font-color',
+}
+
 #------------------------------------------------------------------------------
 class context_parser(xml.sax.ContentHandler):
   def __init__(self, root_parser):
@@ -45,6 +64,20 @@ class parse_style_tab_stops(context_parser):
     print '  tab-stops: %s;' % text
 
 #------------------------------------------------------------------------------
+def print_attr(attrs, key, display_name):
+  if key in attrs:
+    common_value = attrs[key]
+    print '  %s: %s;' % (display_name, common_value)
+
+    asian_key = key + '-asian'
+    if asian_key in attrs and attrs[asian_key] != common_value:
+      print '  %s-asian: %s;' % (display_name, attrs[asian_key])
+
+    complex_key = key + '-complex'
+    if complex_key in attrs and attrs[complex_key] != common_value:
+      print '  %s-complex: %s;' % (display_name, attrs[complex_key])
+
+#------------------------------------------------------------------------------
 class parse_style_style(context_parser):
   #----------------------------------------------------------------------------
   def beginContext(self, name, attrs):
@@ -76,6 +109,42 @@ class parse_style_style(context_parser):
   def startElement(self, name, attrs):
     if name == 'style:tab-stops':
       self.root_parser.setContext(parse_style_tab_stops(self.root_parser))
+
+    elif name == 'style:text-properties':
+      print_attr(attrs, 'fo:background-color', 'background-color')
+      print_attr(attrs, 'fo:color', 'color')
+      if 'style:use-window-font-color' in attrs:
+        print '  font-color: window;'
+      print_attr(attrs, 'style:font-name', 'font-name')
+      print_attr(attrs, 'fo:font-size', 'font-size')
+      print_attr(attrs, 'fo:font-weight', 'font-weight')
+
+      if 'style:text-underline-style' in attrs:
+        underline_style = attrs['style:text-underline-style']
+        if 'style:text-underline-width' in attrs:
+          underline_style += ' ' + attrs['style:text-underline-width']
+        if 'style:text-underline-color' in attrs:
+          underline_style += ' ' + attrs['style:text-underline-color']
+        print '  text-underline: %s;' % underline_style
+
+      print_attr(attrs, 'fo:text-shadow', 'text-shadow')
+      print_attr(attrs, 'style:font-relief', 'text-relief')
+
+      if 'fo:hyphenate' in attrs:
+        text = attrs['fo:hyphenate']
+        if 'fo:hyphenation-push-char-count' in attrs:
+          text += ' ' + attrs['fo:hyphenation-push-char-count']
+        elif 'fo:hyphenation-remain-char-count' in attrs:
+          text += ' auto'
+        if 'fo:hyphenation-remain-char-count' in attrs:
+          text += ' ' + attrs['fo:hyphenation-remain-char-count']
+        print '  hyphenate: %s;' % text
+
+      for attr in attrs.keys():
+        if attr.endswith('-asian') or attr.endswith('-complex'):
+          continue;
+        if not attr in recognized_text_properties:
+          print '  /* unhandled text-properties attribute \'%s\' */' % attr
 
     else:
       print '  /* unhandled tag \'%s\' */' % name
