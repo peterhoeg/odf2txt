@@ -1,0 +1,167 @@
+#!/bin/env python
+
+import argparse
+import xml.sax
+import zipfile
+
+#------------------------------------------------------------------------------
+class context_parser(xml.sax.ContentHandler):
+  def __init__(self, root_parser):
+    xml.sax.ContentHandler.__init__(self)
+    self.root_parser = root_parser
+
+  def beginContext(self, name, attrs):
+    pass
+
+  def endContext(self):
+    pass
+
+#------------------------------------------------------------------------------
+class parse_style_tab_stops(context_parser):
+  #----------------------------------------------------------------------------
+  def __init__(self, root_parser):
+    context_parser.__init__(self, root_parser)
+    self.stops = []
+
+  #----------------------------------------------------------------------------
+  def startElement(self, name, attrs):
+    if name == 'style:tab-stop':
+      self.stops.append(attrs)
+
+  #----------------------------------------------------------------------------
+  def endContext(self):
+    if not len(self.stops):
+      return
+
+    text = ''
+    for stop in self.stops:
+      if len(text):
+        text += ', '
+
+      text += stop['style:position']
+      if 'style:type' in stop:
+        text += ' ' + stop['style:type']
+
+    print '  tab-stops: %s;' % text
+
+#------------------------------------------------------------------------------
+class parse_style_style(context_parser):
+  #----------------------------------------------------------------------------
+  def beginContext(self, name, attrs):
+    # Only handle named non-default styles
+    if name == 'style:style' and 'style:display-name' in attrs:
+      if 'style:class' in attrs:
+        print '%s:%s."%s" {' % (attrs['style:family'], attrs['style:class'],
+                                attrs['style:display-name'])
+      else:
+        print '%s."%s" {' % (attrs['style:family'],
+                              attrs['style:display-name'])
+
+      self.in_style = True;
+
+    # Handle default styles
+    elif name == 'style:default-style':
+      print '%s {' % attrs['style:family']
+      self.in_style = True;
+
+    # If an unnamed non-default style, cancel the context
+    else:
+      self.root_parser.popContext()
+
+  #----------------------------------------------------------------------------
+  def endContext(self):
+    print '}\n'
+
+  #----------------------------------------------------------------------------
+  def startElement(self, name, attrs):
+    if name == 'style:tab-stops':
+      self.root_parser.setContext(parse_style_tab_stops(self.root_parser))
+
+    else:
+      print '  /* unhandled tag \'%s\' */' % name
+
+#------------------------------------------------------------------------------
+class style_parser(xml.sax.ContentHandler):
+  #----------------------------------------------------------------------------
+  def __init__(self):
+    xml.sax.ContentHandler.__init__(self)
+
+    self.context_parsers = []
+    self.context_tags = []
+
+    self.current_name = None
+    self.current_attrs = {}
+
+  #----------------------------------------------------------------------------
+  def setContext(self, context):
+    self.context_tags.append(self.current_name)
+    self.context_parsers.append(context)
+    context.beginContext(self.current_name, self.current_attrs)
+
+  #----------------------------------------------------------------------------
+  def popContext(self):
+    self.context_parsers.pop()
+    self.context_tags.pop()
+
+  #----------------------------------------------------------------------------
+  def startElement(self, name, attrs):
+    self.current_name = name
+    self.current_attrs = attrs
+
+    if len(self.context_parsers):
+      self.context_parsers[-1].startElement(name, attrs);
+
+    if name == 'style:style' or name == 'style:default-style':
+      self.setContext(parse_style_style(self))
+
+  #----------------------------------------------------------------------------
+  def endElement(self, name):
+    if len(self.context_tags) and name == self.context_tags[-1]:
+      self.context_parsers[-1].endContext()
+      self.popContext()
+
+    if len(self.context_parsers):
+      self.context_parsers[-1].endElement(name);
+
+#------------------------------------------------------------------------------
+def print_raw(archive, filename):
+  data = archive.read(filename)
+  print data
+
+#------------------------------------------------------------------------------
+def parse_xml(archive, filename, parser):
+  data = archive.read(filename)
+  xml.sax.parseString(data, parser)
+
+#------------------------------------------------------------------------------
+def main():
+  parser = argparse.ArgumentParser()
+  parser.add_argument('document',
+                      help='path to document to convert')
+  parser.add_argument('--raw', dest='raw', action='store_const',
+                      const=True, default=False,
+                      help='print raw XML')
+  parser.add_argument('--style', dest='style', action='store_const',
+                      const=True, default=False,
+                      help='include simplified style markup')
+
+  args = parser.parse_args()
+  archive = zipfile.ZipFile(args.document)
+
+  # Are we reading the raw XML?
+  if args.raw:
+    # Print style (if requested) and content, then exit
+    args.style and print_raw(archive, 'styles.xml')
+    print_raw(archive, 'content.xml')
+    return
+
+  if args.style:
+    parse_xml(archive, 'styles.xml', style_parser())
+
+  # TODO
+  for info in archive.infolist():
+    print info.filename
+
+#------------------------------------------------------------------------------
+if __name__ == '__main__':
+  main()
