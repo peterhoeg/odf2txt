@@ -1,6 +1,7 @@
 #!/bin/env python
 
 import argparse
+import sys
 import xml.sax
 import zipfile
 
@@ -22,6 +23,23 @@ recognized_text_properties = {
   'style:text-underline-width',
   'style:use-window-font-color',
 }
+
+recognized_content_tags = {
+  'office:text',
+  'office:forms',
+  'text:h',
+  'text:line-break',
+  'text:p',
+  'text:s',
+  'text:sequence-decls',
+  'text:sequence-decl',
+  'text:soft-page-break',
+  'text:span',
+  'text:tab',
+}
+
+defined_styles = {}
+inline_styles = {}
 
 #------------------------------------------------------------------------------
 class context_parser(xml.sax.ContentHandler):
@@ -82,14 +100,28 @@ class parse_style_style(context_parser):
   #----------------------------------------------------------------------------
   def beginContext(self, name, attrs):
     # Only handle named non-default styles
-    if name == 'style:style' and 'style:display-name' in attrs:
+    if name == 'style:style':
+      style_name = attrs['style:name']
+
+      # Skip non-user styles (do these come from imported Word documents?)
+      if style_name.startswith('WW8Num'):
+        self.root_parser.popContext()
+        return
+
+      # Get display name
+      style_display_name = style_name
+      if 'style:display-name' in attrs:
+        style_display_name = attrs['style:display-name']
+
+      # Print selector
       if 'style:class' in attrs:
         print '%s:%s."%s" {' % (attrs['style:family'], attrs['style:class'],
-                                attrs['style:display-name'])
+                                style_display_name)
       else:
-        print '%s."%s" {' % (attrs['style:family'],
-                              attrs['style:display-name'])
+        print '%s."%s" {' % (attrs['style:family'], style_display_name)
 
+      # Add to style names map
+      defined_styles[style_name] = style_display_name
       self.in_style = True;
 
     # Handle default styles
@@ -193,6 +225,109 @@ class style_parser(xml.sax.ContentHandler):
       self.context_parsers[-1].endElement(name);
 
 #------------------------------------------------------------------------------
+class simple_content_parser(xml.sax.ContentHandler):
+
+  #----------------------------------------------------------------------------
+  def endElement(self, name):
+    if name == 'text:p' or name == 'text:h':
+      print '\n'
+    elif name == 'text:s':
+      sys.stdout.write(' ')
+    elif name == 'text:tab':
+      sys.stdout.write('\t')
+    elif name == 'text:line-break':
+      print
+
+  #----------------------------------------------------------------------------
+  def characters(self, content):
+    sys.stdout.write(content.encode('utf-8'))
+
+#------------------------------------------------------------------------------
+def print_tag_start(name, attrs):
+  text = '<!-- unhandled: <' + name
+  for attr in attrs.keys():
+    text += ' %s=\"%s\"' % (attr, attrs[attr])
+  text += '> -->'
+  print text
+
+#------------------------------------------------------------------------------
+def print_tag_end(name):
+  print '<!-- unhandled: </%s> -->' % name
+
+#------------------------------------------------------------------------------
+def make_styled_tag(name, attrs):
+  if 'text:style-name' in attrs:
+    style_name = attrs['text:style-name']
+    if style_name in defined_styles:
+      return '<%s class=\"%s\">' % (name, defined_styles[style_name])
+
+  return '<%s>' % name
+
+#------------------------------------------------------------------------------
+class styled_content_parser(simple_content_parser):
+  #----------------------------------------------------------------------------
+  def __init__(self):
+    xml.sax.ContentHandler.__init__(self)
+
+    self.in_body = False
+    self.in_style = None
+    self.end_tags = []
+
+  #----------------------------------------------------------------------------
+  def startElement(self, name, attrs):
+    end_tag = None
+
+    if name == 'office:body':
+      self.in_body = True
+
+    elif self.in_style is not None:
+      # TODO parse inline style
+      pass
+
+    elif self.in_body:
+      self.end_tags.append(end_tag)
+
+      if name == 'text:h':
+        tag = 'h%s' % attrs['text:outline-level']
+        sys.stdout.write(make_styled_tag(tag, attrs))
+        end_tag = '</%s>\n\n' % tag
+
+      elif name == 'text:span':
+        sys.stdout.write(make_styled_tag('span', attrs))
+        end_tag = '</span>'
+
+      elif name not in recognized_content_tags:
+        print_tag_start(name, attrs)
+
+    elif name == 'style:style':
+      self.in_style = attrs['style:name']
+      #inline_styles[self.in_style] = ''
+      inline_styles[self.in_style] = attrs['style:name']
+
+    self.end_tags.append(end_tag)
+
+  #----------------------------------------------------------------------------
+  def endElement(self, name):
+    if self.end_tags[-1] is not None:
+      sys.stdout.write(self.end_tags[-1])
+    elif name == 'text:p':
+      print '\n'
+    elif name == 'text:s':
+      sys.stdout.write('&nbsp;')
+    elif name == 'text:tab':
+      sys.stdout.write('\t')
+    elif name == 'text:line-break':
+      print '<br/>'
+    elif name == 'style:style':
+      self.in_style = None
+
+    self.end_tags.pop()
+
+  #----------------------------------------------------------------------------
+  def characters(self, content):
+    sys.stdout.write(content.encode('utf-8'))
+
+#------------------------------------------------------------------------------
 def print_raw(archive, filename):
   data = archive.read(filename)
   print data
@@ -226,10 +361,9 @@ def main():
 
   if args.style:
     parse_xml(archive, 'styles.xml', style_parser())
-
-  # TODO
-  for info in archive.infolist():
-    print info.filename
+    parse_xml(archive, 'content.xml', styled_content_parser())
+  else:
+    parse_xml(archive, 'content.xml', simple_content_parser())
 
 #------------------------------------------------------------------------------
 if __name__ == '__main__':
