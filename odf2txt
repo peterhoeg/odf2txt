@@ -17,6 +17,8 @@ recognized_text_properties = {
   'fo:hyphenation-remain-char-count',
   'fo:language', # NOT DISPLAYED
   'fo:text-shadow',
+  'officeooo:paragraph-rsid', # NOT DISPLAYED
+  'officeooo:rsid', # NOT DISPLAYED
   'style:font-name',
   'style:font-relief',
   'style:text-underline-color',
@@ -308,8 +310,6 @@ class styled_content_parser(simple_content_parser):
         inline_styles[self.in_style] = ' '.join(rules)
 
     elif self.in_body:
-      self.end_tags.append(end_tag)
-
       if name == 'text:h':
         tag = 'h%s' % attrs['text:outline-level']
         sys.stdout.write(make_styled_tag(tag, attrs))
