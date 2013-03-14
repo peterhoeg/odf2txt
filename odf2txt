@@ -310,7 +310,13 @@ class styled_content_parser(simple_content_parser):
         inline_styles[self.in_style] = ' '.join(rules)
 
     elif self.in_body:
-      if name == 'text:h':
+      if name == 'text:p' and 'text:style-name' in attrs:
+        style_name = attrs['text:style-name']
+        if style_name != 'Standard':
+          sys.stdout.write(make_styled_tag('p', attrs))
+          end_tag = '</p>\n\n'
+
+      elif name == 'text:h':
         tag = 'h%s' % attrs['text:outline-level']
         sys.stdout.write(make_styled_tag(tag, attrs))
         end_tag = '</%s>\n\n' % tag
