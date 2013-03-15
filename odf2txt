@@ -23,6 +23,46 @@ import sys
 import xml.sax
 import zipfile
 
+recognized_paragraph_properties = {
+  'fo:background-color',
+  'fo:border',
+  'fo:border-bottom',
+  'fo:border-left',
+  'fo:border-right',
+  'fo:border-top',
+  'fo:break-before',
+  'fo:hyphenation-ladder-count',
+  'fo:keep-together',
+  'fo:keep-with-next',
+  'fo:margin',
+  'fo:margin-bottom',
+  'fo:margin-left',
+  'fo:margin-right',
+  'fo:margin-top',
+  'fo:orphans',
+  'fo:padding',
+  'fo:padding-bottom',
+  'fo:padding-left',
+  'fo:padding-right',
+  'fo:padding-top',
+  'fo:text-align',
+  'fo:text-indent',
+  'fo:widows',
+  'style:auto-text-indent',
+  'style:contextual-spacing',
+  'style:font-independent-line-spacing', # NOT DISPLAYED
+  'style:justify-single-word',
+  'style:line-break',
+  'style:page-number',
+  'style:punctuation-wrap',
+  'style:shadow',
+  'style:tab-stop-distance',
+  'style:text-autospace', # NOT DISPLAYED
+  'style:writing-mode', # NOT DISPLAYED
+  'text:line-number',
+  'text:number-lines',
+}
+
 recognized_text_properties = {
   'fo:background-color',
   'fo:color',
@@ -105,8 +145,21 @@ class parse_style_tab_stops(context_parser):
     print '  tab-stops: %s;' % text
 
 #------------------------------------------------------------------------------
-def extract_rule(attrs, key, display_name):
+def extract_rule(attrs, key, display_name = None):
+  if display_name is None:
+    display_name = key[key.find(':') + 1:]
+
+  if key in attrs:
+    return ['%s: %s;' % (display_name, attrs[key])]
+  else:
+    return []
+
+#------------------------------------------------------------------------------
+def extract_lang_rules(attrs, key, display_name = None):
   rules = []
+
+  if display_name is None:
+    display_name = key[key.find(':') + 1:]
 
   if key in attrs:
     common_value = attrs[key]
@@ -123,18 +176,64 @@ def extract_rule(attrs, key, display_name):
   return rules
 
 #------------------------------------------------------------------------------
+def extract_edge_rules(attrs, key, display_name = None):
+  if display_name is None:
+    display_name = key[key.find(':') + 1:]
+
+  return extract_rule(attrs, key, display_name) + \
+         extract_rule(attrs, key + '-top', display_name + '-top') + \
+         extract_rule(attrs, key + '-left', display_name + '-left') + \
+         extract_rule(attrs, key + '-right', display_name + '-right') + \
+         extract_rule(attrs, key + '-bottom', display_name + '-bottom')
+
+#------------------------------------------------------------------------------
 def extract_style_rules(name, attrs):
   rules = []
 
-  if name == 'style:text-properties':
-    rules += extract_rule(attrs, 'fo:background-color', 'background-color')
-    rules += extract_rule(attrs, 'fo:color', 'color')
+  if name == 'style:paragraph-properties':
+    rules += extract_rule(attrs, 'fo:background-color')
+
+    rules += extract_edge_rules(attrs, 'fo:border')
+    rules += extract_edge_rules(attrs, 'fo:margin')
+    rules += extract_edge_rules(attrs, 'fo:padding')
+    rules += extract_rule(attrs, 'style:contextual-spacing')
+
+    rules += extract_rule(attrs, 'fo:text-align')
+    rules += extract_rule(attrs, 'style:justify-single-word')
+    rules += extract_rule(attrs, 'fo:text-indent')
+    rules += extract_rule(attrs, 'style:auto-text-indent')
+    rules += extract_rule(attrs, 'style:punctuation-wrap')
+
+    rules += extract_rule(attrs, 'fo:hyphenation-ladder-count')
+
+    rules += extract_rule(attrs, 'style:line-break')
+    rules += extract_rule(attrs, 'fo:break-before')
+    rules += extract_rule(attrs, 'fo:keep-together')
+    rules += extract_rule(attrs, 'fo:keep-with-next')
+    rules += extract_rule(attrs, 'fo:orphans')
+    rules += extract_rule(attrs, 'fo:widows')
+
+    rules += extract_rule(attrs, 'style:tab-stop-distance')
+    rules += extract_rule(attrs, 'style:shadow')
+
+    rules += extract_rule(attrs, 'text:number-lines')
+    rules += extract_rule(attrs, 'text:line-number')
+    rules += extract_rule(attrs, 'style:page-number')
+
+    for attr in attrs.keys():
+      #if attr.endswith('-asian') or attr.endswith('-complex'):
+      if not attr in recognized_paragraph_properties:
+        rules += ['/* unhandled %s attribute \'%s\' */' % (name[6:], attr)]
+
+  elif name == 'style:text-properties':
+    rules += extract_rule(attrs, 'fo:background-color')
+    rules += extract_rule(attrs, 'fo:color')
     if 'style:use-window-font-color' in attrs:
       print '  font-color: window;'
-    rules += extract_rule(attrs, 'style:font-name', 'font-name')
-    rules += extract_rule(attrs, 'fo:font-size', 'font-size')
-    rules += extract_rule(attrs, 'fo:font-style', 'font-style')
-    rules += extract_rule(attrs, 'fo:font-weight', 'font-weight')
+    rules += extract_lang_rules(attrs, 'style:font-name')
+    rules += extract_lang_rules(attrs, 'fo:font-size')
+    rules += extract_lang_rules(attrs, 'fo:font-style')
+    rules += extract_lang_rules(attrs, 'fo:font-weight')
 
     if 'style:text-underline-style' in attrs:
       underline_style = attrs['style:text-underline-style']
@@ -144,7 +243,7 @@ def extract_style_rules(name, attrs):
         underline_style += ' ' + attrs['style:text-underline-color']
       rules += ['text-underline: %s;' % underline_style]
 
-    rules += extract_rule(attrs, 'fo:text-shadow', 'text-shadow')
+    rules += extract_rule(attrs, 'fo:text-shadow')
     rules += extract_rule(attrs, 'style:font-relief', 'text-relief')
 
     if 'fo:hyphenate' in attrs:
@@ -161,12 +260,12 @@ def extract_style_rules(name, attrs):
       if attr.endswith('-asian') or attr.endswith('-complex'):
         continue;
       if not attr in recognized_text_properties:
-        rules += ['/* unhandled text-properties attribute \'%s\' */' % attr]
-
-    return rules
+        rules += ['/* unhandled %s attribute \'%s\' */' % (name[6:], attr)]
 
   else:
     return ['/* unhandled tag \'%s\' */' % name]
+
+  return rules
 
 #------------------------------------------------------------------------------
 class parse_style_style(context_parser):
