@@ -46,14 +46,16 @@ recognized_text_properties = {
 }
 
 recognized_content_tags = {
-  'office:text',
   'office:forms',
+  'office:text',
   'text:h',
   'text:line-break',
+  'text:list',
+  'text:list-item',
   'text:p',
   'text:s',
-  'text:sequence-decls',
   'text:sequence-decl',
+  'text:sequence-decls',
   'text:soft-page-break',
   'text:span',
   'text:tab',
@@ -264,15 +266,30 @@ class style_parser(xml.sax.ContentHandler):
 class simple_content_parser(xml.sax.ContentHandler):
 
   #----------------------------------------------------------------------------
+  def __init__(self):
+    xml.sax.ContentHandler.__init__(self)
+    self.indent_level = 0
+
+  #----------------------------------------------------------------------------
+  def startElement(self, name, attrs):
+    if name == 'text:list':
+      self.indent_level += 2
+    elif name == 'text:list-item':
+      sys.stdout.write('\n%s* ' % (' ' * self.indent_level))
+
+  #----------------------------------------------------------------------------
   def endElement(self, name):
     if name == 'text:p' or name == 'text:h':
       print '\n'
+    elif name == 'text:list':
+      print '\n'
+      self.indent_level -= 2
     elif name == 'text:s':
       sys.stdout.write(' ')
     elif name == 'text:tab':
       sys.stdout.write('\t')
     elif name == 'text:line-break':
-      print
+      sys.stdout.write('\n%s' % (' ' * self.indent_level))
 
   #----------------------------------------------------------------------------
   def characters(self, content):
@@ -305,7 +322,7 @@ def make_styled_tag(name, attrs):
 class styled_content_parser(simple_content_parser):
   #----------------------------------------------------------------------------
   def __init__(self):
-    xml.sax.ContentHandler.__init__(self)
+    simple_content_parser.__init__(self)
 
     self.in_body = False
     self.in_style = None
@@ -317,6 +334,7 @@ class styled_content_parser(simple_content_parser):
 
     if name == 'office:body':
       self.in_body = True
+      self.reinterpret_next = None
 
     elif self.in_style is not None:
       rules = extract_style_rules(name, attrs)
@@ -328,7 +346,11 @@ class styled_content_parser(simple_content_parser):
         inline_styles[self.in_style] = ' '.join(rules)
 
     elif self.in_body:
-      if name == 'text:p' and 'text:style-name' in attrs:
+      if self.reinterpret_next is not None:
+        end_tag = self.reinterpret_next(name, attrs)
+        self.reinterpret_next = None
+
+      elif name == 'text:p' and 'text:style-name' in attrs:
         style_name = attrs['text:style-name']
         if style_name != 'Standard':
           sys.stdout.write(make_styled_tag('p', attrs))
@@ -338,6 +360,19 @@ class styled_content_parser(simple_content_parser):
         tag = 'h%s' % attrs['text:outline-level']
         sys.stdout.write(make_styled_tag(tag, attrs))
         end_tag = '</%s>\n\n' % tag
+
+      elif name == 'text:list':
+        print '\n%s%s' % ((' ' * self.indent_level),
+                          make_styled_tag('list', attrs))
+        self.indent_level += 2
+
+      elif name == 'text:list-item':
+        def reinterpret_list_item(name, attrs):
+          sys.stdout.write(' ' * self.indent_level)
+          sys.stdout.write(make_styled_tag('li', attrs))
+          return '</li>\n'
+
+        self.reinterpret_next = reinterpret_list_item
 
       elif name == 'text:span':
         sys.stdout.write(make_styled_tag('span', attrs))
@@ -356,14 +391,23 @@ class styled_content_parser(simple_content_parser):
   def endElement(self, name):
     if self.end_tags[-1] is not None:
       sys.stdout.write(self.end_tags[-1])
+
     elif name == 'text:p':
       print '\n'
+
     elif name == 'text:s':
       sys.stdout.write('&nbsp;')
+
     elif name == 'text:tab':
       sys.stdout.write('\t')
+
     elif name == 'text:line-break':
-      print '<br/>'
+      sys.stdout.write('<br/>\n%s' % (' ' * self.indent_level))
+
+    elif name == 'text:list':
+      self.indent_level -= 2
+      print '\n%s</list>' % (' ' * self.indent_level)
+
     elif name == 'style:style':
       self.in_style = None
 
