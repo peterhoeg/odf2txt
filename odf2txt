@@ -1,4 +1,5 @@
 #!/bin/env python
+# -*- coding: utf-8 -*-
 #
 # odf2txt - Convert ODF documents to text
 #
@@ -19,6 +20,7 @@
 #
 
 import argparse
+import re
 import sys
 import xml.sax
 import zipfile
@@ -101,8 +103,24 @@ recognized_content_tags = {
   'text:tab',
 }
 
+break_at = re.compile('[.?!;]([)\"\'>»’”]|&gt;)|[?!] ')
+
+no_break_after = [
+  'e.g.',
+  'i.e.'
+  'mrs.',
+  'mr.',
+  'ms.',
+  'dr.',
+  'jr.',
+  'sr.',
+  'vs.',
+]
+
 defined_styles = {}
 inline_styles = {}
+
+args = None
 
 #------------------------------------------------------------------------------
 class context_parser(xml.sax.ContentHandler):
@@ -426,6 +444,7 @@ class styled_content_parser(simple_content_parser):
     self.in_body = False
     self.in_style = None
     self.end_tags = []
+    self.text = ''
 
   #----------------------------------------------------------------------------
   def startElement(self, name, attrs):
@@ -489,32 +508,98 @@ class styled_content_parser(simple_content_parser):
   #----------------------------------------------------------------------------
   def endElement(self, name):
     if self.end_tags[-1] is not None:
-      sys.stdout.write(self.end_tags[-1])
+      self.addText(self.end_tags[-1])
 
     elif name == 'text:p':
+      self.flushText()
       print '\n'
 
     elif name == 'text:s':
-      sys.stdout.write('&nbsp;')
+      self.addText('&nbsp;')
 
     elif name == 'text:tab':
-      sys.stdout.write('\t')
+      self.addText('\t')
 
     elif name == 'text:line-break':
-      sys.stdout.write('<br/>\n%s' % (' ' * self.indent_level))
+      self.flushText('<br/>\n')
+      self.text = ' ' * self.indent_level
 
     elif name == 'text:list':
       self.indent_level -= 2
-      print '\n%s</list>' % (' ' * self.indent_level)
+      self.flushText('\n')
+      self.text = '%s</list>' % (' ' * self.indent_level)
 
     elif name == 'style:style':
       self.in_style = None
+
+    if name == 'office:body':
+      self.flushText()
 
     self.end_tags.pop()
 
   #----------------------------------------------------------------------------
   def characters(self, content):
+    self.addText(content)
+
+  #----------------------------------------------------------------------------
+  def addText(self, content):
+    self.text += content
+    if content.find('\n') >= 0:
+      self.flushText()
+
+  #----------------------------------------------------------------------------
+  def flushText(self, append = None):
+    if append is not None:
+      self.text += append
+
+    if not args.break_sentences:
+      sys.stdout.write(content.encode('utf-8'))
+      self.text = ''
+      return
+
+    # Split at sentence breaks that are identifiably not abbreviations
+    def breakLine(match):
+      match_text = match.group(0)
+
+      # Don't break before markup tags
+      match_end = match.end(0) + 1
+      if match_end < len(match.string) and match.string[match_end] != '<':
+        return match_text
+
+      if match_text[-1] == ' ':
+        match_text = match_text[0:-1]
+
+      return match_text + '\n'
+
+    content = break_at.sub(breakLine, self.text)
+
+    # Split at periods, except after non-breaking words
+    n = 0
+    while True:
+      n = content.find('. ', n)
+      if n < 0:
+        break
+
+      first_part = content[0:n + 1]
+      first_part_lower = first_part.lower()
+
+      # Check if period ends a non-breaking word
+      for nb in no_break_after:
+        if n > len(nb) and first_part_lower.endswith(nb):
+          first_part = None
+          break
+
+      # Split content and print part before split
+      if first_part is not None:
+        print first_part.encode('utf-8')
+        content = content[n + 2:]
+        n = 0
+
+      n += 2
+
+    # Write remaining content
     sys.stdout.write(content.encode('utf-8'))
+    self.text = ''
 
 #------------------------------------------------------------------------------
 def print_raw(archive, filename):
@@ -537,7 +622,11 @@ def main():
   parser.add_argument('--style', dest='style', action='store_const',
                       const=True, default=False,
                       help='include simplified style markup')
+  parser.add_argument('--break-sentences', dest='break_sentences',
+                      action='store_const', const=True, default=False,
+                      help='add line break at the end of sentences')
 
+  global args
   args = parser.parse_args()
   archive = zipfile.ZipFile(args.document)
 
