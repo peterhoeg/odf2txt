@@ -508,17 +508,17 @@ class styled_content_parser(simple_content_parser):
   #----------------------------------------------------------------------------
   def endElement(self, name):
     if self.end_tags[-1] is not None:
-      self.addText(self.end_tags[-1])
+      self.flushText(self.end_tags[-1])
 
     elif name == 'text:p':
       self.flushText()
       print '\n'
 
     elif name == 'text:s':
-      self.addText('&nbsp;')
+      self.flushText('&nbsp;')
 
     elif name == 'text:tab':
-      self.addText('\t')
+      self.flushText('\t')
 
     elif name == 'text:line-break':
       self.flushText('<br/>\n')
@@ -539,10 +539,6 @@ class styled_content_parser(simple_content_parser):
 
   #----------------------------------------------------------------------------
   def characters(self, content):
-    self.addText(content)
-
-  #----------------------------------------------------------------------------
-  def addText(self, content):
     self.text += content
     if content.find('\n') >= 0:
       self.flushText()
