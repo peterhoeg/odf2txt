@@ -170,3 +170,11 @@ objective would be to preserve the general document style in HTML that is
 reasonably lean without additional intervention, rather than to achieve a
 page-accurate rendering, as LibreOffice or odfpy are quite capable of producing
 that sort of output already.)
+
+License
+=======
+
+odf2txt is written by Matthew Woehlke, and is distributed under the terms of
+the GNU General Public Licence. See COPYING.txt for the complete license. The
+copyright statement in the script applies to all parts of the software,
+including this document, unless otherwise stated.
