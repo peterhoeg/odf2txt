@@ -90,6 +90,10 @@ recognized_text_properties = {
 recognized_content_tags = {
   'office:forms',
   'office:text',
+  'table:table',
+  'table:table-cell',
+  'table:table-column',
+  'table:table-row',
   'text:h',
   'text:line-break',
   'text:list',
@@ -425,9 +429,9 @@ def print_tag_end(name):
   print '<!-- unhandled: </%s> -->' % name
 
 #------------------------------------------------------------------------------
-def make_styled_tag(name, attrs):
-  if 'text:style-name' in attrs:
-    style_name = attrs['text:style-name']
+def make_styled_tag(name, attrs, name_key = 'text:style-name'):
+  if name_key in attrs:
+    style_name = attrs[name_key]
     if style_name in defined_styles:
       return '<%s class=\"%s\">' % (name, defined_styles[style_name])
     elif style_name in inline_styles:
@@ -443,11 +447,13 @@ class styled_content_parser(simple_content_parser):
 
     self.in_body = False
     self.in_style = None
+    self.tags = []
     self.end_tags = []
     self.text = ''
 
   #----------------------------------------------------------------------------
   def startElement(self, name, attrs):
+    self.tags.append(name)
     end_tag = None
 
     if name == 'office:body':
@@ -472,7 +478,10 @@ class styled_content_parser(simple_content_parser):
         style_name = attrs['text:style-name']
         if style_name != 'Standard':
           sys.stdout.write(make_styled_tag('p', attrs))
-          end_tag = '</p>\n\n'
+          if self.tags[-2] == 'table:table-cell':
+            end_tag = '</p>'
+          else:
+            end_tag = '</p>\n\n'
 
       elif name == 'text:h':
         tag = 'h%s' % attrs['text:outline-level']
@@ -496,6 +505,25 @@ class styled_content_parser(simple_content_parser):
         sys.stdout.write(make_styled_tag('span', attrs))
         end_tag = '</span>'
 
+      elif name == 'table:table':
+        print make_styled_tag('table', attrs)
+        self.indent_level += 2
+
+      elif name == 'table:table-column':
+        sys.stdout.write(' ' * self.indent_level)
+        sys.stdout.write(make_styled_tag('tc', attrs, 'table:style-name'))
+        end_tag = '</tc>\n'
+
+      elif name == 'table:table-row':
+        sys.stdout.write(' ' * self.indent_level)
+        sys.stdout.write(make_styled_tag('tr', attrs, 'table:style-name'))
+        self.indent_level += 2
+
+      elif name == 'table:table-cell':
+        sys.stdout.write('\n%s' % (' ' * self.indent_level))
+        sys.stdout.write(make_styled_tag('td', attrs, 'table:style-name'))
+        end_tag = '</td>'
+
       elif name not in recognized_content_tags:
         print_tag_start(name, attrs)
 
@@ -507,12 +535,15 @@ class styled_content_parser(simple_content_parser):
 
   #----------------------------------------------------------------------------
   def endElement(self, name):
+    self.tags.pop()
+
     if self.end_tags[-1] is not None:
       self.flushText(self.end_tags[-1])
 
     elif name == 'text:p':
       self.flushText()
-      print '\n'
+      if self.tags[-1] != 'table:table-cell':
+        print '\n'
 
     elif name == 'text:s':
       self.flushText('&nbsp;')
@@ -528,6 +559,20 @@ class styled_content_parser(simple_content_parser):
       self.indent_level -= 2
       self.flushText('\n')
       self.text = '%s</list>' % (' ' * self.indent_level)
+
+    elif name == 'table:table':
+      self.indent_level -= 2
+      self.flushText()
+      print '\n</table>'
+
+    elif name == 'table:table-row':
+      self.indent_level -= 2
+      self.flushText()
+      print '\n%s</tr>' % (' ' * self.indent_level)
+
+    elif name == 'table:table-cell':
+      self.flushText()
+      sys.stdout.write('</td>%s' % (' ' * self.indent_level))
 
     elif name == 'style:style':
       self.in_style = None
