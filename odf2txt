@@ -678,7 +678,7 @@ class styled_content_parser(simple_content_parser):
       self.text += append
 
     if not args.break_sentences:
-      sys.stdout.write(content.encode('utf-8'))
+      sys.stdout.write(self.text.encode('utf-8'))
       self.text = ''
       return
 
