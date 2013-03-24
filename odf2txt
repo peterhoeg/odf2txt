@@ -157,6 +157,7 @@ no_break_after = [
 
 defined_styles = {}
 inline_styles = {}
+inline_styles_parents = {}
 
 args = None
 
@@ -509,7 +510,12 @@ def make_styled_tag(name, attrs, name_key = 'text:style-name'):
     if style_name in defined_styles:
       return '<%s class=\"%s\">' % (name, defined_styles[style_name])
     elif style_name in inline_styles:
-      return '<%s style=\"%s\">' % (name, inline_styles[style_name])
+      rules = inline_styles[style_name]
+      if style_name in inline_styles_parents:
+        parent = inline_styles_parents[style_name]
+        return '<%s class=\"%s\" style=\"%s\">' % (name, parent, rules)
+      else:
+        return '<%s style=\"%s\">' % (name, rules)
 
   return '<%s>' % name
 
@@ -604,6 +610,10 @@ class styled_content_parser(simple_content_parser):
     elif name == 'style:style':
       self.in_style = attrs['style:name']
       inline_styles[self.in_style] = ''
+      if 'style:parent-style-name' in attrs:
+        parent = attrs['style:parent-style-name']
+        if parent in defined_styles:
+          inline_styles_parents[self.in_style] = defined_styles[parent]
 
     self.end_tags.append(end_tag)
 
