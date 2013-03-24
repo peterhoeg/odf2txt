@@ -81,10 +81,44 @@ recognized_text_properties = {
   'officeooo:rsid', # NOT DISPLAYED
   'style:font-name',
   'style:font-relief',
+  'style:letter-kerning',
   'style:text-underline-color',
   'style:text-underline-style',
   'style:text-underline-width',
   'style:use-window-font-color',
+}
+
+recognized_table_column_properties = {
+  'fo:break-after',
+  'fo:break-before',
+  'style:column-width',
+  'style:rel-column-width',
+  'style:use-optimal-column-width',
+}
+
+recognized_table_row_properties = {
+  'fo:background-color',
+  'fo:break-after',
+  'fo:break-before',
+  'fo:keep-together',
+  'style:min-row-height',
+  'style:row-height',
+  'style:use-optimal-row-height',
+}
+
+recognized_table_cell_properties = {
+  'fo:background-color',
+  'fo:border',
+  'fo:border-bottom',
+  'fo:border-left',
+  'fo:border-right',
+  'fo:border-top',
+  'fo:padding',
+  'fo:padding-bottom',
+  'fo:padding-left',
+  'fo:padding-right',
+  'fo:padding-top',
+  'style:shadow',
 }
 
 recognized_content_tags = {
@@ -243,7 +277,6 @@ def extract_style_rules(name, attrs):
     rules += extract_rule(attrs, 'style:page-number')
 
     for attr in attrs.keys():
-      #if attr.endswith('-asian') or attr.endswith('-complex'):
       if not attr in recognized_paragraph_properties:
         rules += ['/* unhandled %s attribute \'%s\' */' % (name[6:], attr)]
 
@@ -277,11 +310,52 @@ def extract_style_rules(name, attrs):
       if 'fo:hyphenation-remain-char-count' in attrs:
         text += ' ' + attrs['fo:hyphenation-remain-char-count']
       rules += ['hyphenate: %s;' % text]
+    rules += extract_lang_rules(attrs, 'style:letter-kerning')
 
     for attr in attrs.keys():
       if attr.endswith('-asian') or attr.endswith('-complex'):
         continue;
       if not attr in recognized_text_properties:
+        rules += ['/* unhandled %s attribute \'%s\' */' % (name[6:], attr)]
+
+  elif name == 'style:table-cell-properties':
+    rules += extract_rule(attrs, 'fo:background-color')
+    rules += extract_rule(attrs, 'style:shadow')
+
+    rules += extract_edge_rules(attrs, 'fo:border')
+    rules += extract_edge_rules(attrs, 'fo:padding')
+
+    for attr in attrs.keys():
+      if not attr in recognized_table_cell_properties:
+        rules += ['/* unhandled %s attribute \'%s\' */' % (name[6:], attr)]
+
+  elif name == 'style:table-row-properties':
+    rules += extract_rule(attrs, 'fo:background-color')
+
+    rules += extract_rule(attrs, 'style:row-height', 'height')
+    rules += extract_rule(attrs, 'style:min-row-height', 'min-height')
+    rules += extract_rule(attrs, 'style:use-optimal-row-height',
+                          'optimal-height')
+
+    rules += extract_rule(attrs, 'fo:break-before')
+    rules += extract_rule(attrs, 'fo:break-after')
+    rules += extract_rule(attrs, 'fo:keep-together')
+
+    for attr in attrs.keys():
+      if not attr in recognized_table_row_properties:
+        rules += ['/* unhandled %s attribute \'%s\' */' % (name[6:], attr)]
+
+  elif name == 'style:table-column-properties':
+    rules += extract_rule(attrs, 'style:column-width', 'width')
+    rules += extract_rule(attrs, 'style:rel-column-width', 'rel-width')
+    rules += extract_rule(attrs, 'style:use-optimal-column-width',
+                          'optimal-width')
+
+    rules += extract_rule(attrs, 'fo:break-before')
+    rules += extract_rule(attrs, 'fo:break-after')
+
+    for attr in attrs.keys():
+      if not attr in recognized_table_column_properties:
         rules += ['/* unhandled %s attribute \'%s\' */' % (name[6:], attr)]
 
   else:
