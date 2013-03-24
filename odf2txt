@@ -550,6 +550,8 @@ class styled_content_parser(simple_content_parser):
         inline_styles[self.in_style] = ' '.join(rules)
 
     elif self.in_body:
+      self.flushText()
+
       if self.reinterpret_next is not None:
         end_tag = self.reinterpret_next(name, attrs)
         self.reinterpret_next = None
