@@ -614,7 +614,7 @@ class styled_content_parser(simple_content_parser):
       inline_styles[self.in_style] = ''
       if 'style:parent-style-name' in attrs:
         parent = attrs['style:parent-style-name']
-        if parent in defined_styles:
+        if parent != 'Standard' and parent in defined_styles:
           inline_styles_parents[self.in_style] = defined_styles[parent]
 
     self.end_tags.append(end_tag)
