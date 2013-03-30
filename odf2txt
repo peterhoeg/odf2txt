@@ -190,16 +190,14 @@ class parse_style_tab_stops(context_parser):
     if not len(self.stops):
       return
 
-    text = ''
+    defs = []
     for stop in self.stops:
-      if len(text):
-        text += ', '
-
-      text += stop['style:position']
+      text = stop['style:position']
       if 'style:type' in stop:
         text += ' ' + stop['style:type']
+      defs += [text]
 
-    print '  tab-stops: %s;' % text
+    print '  tab-stops: %s;' % ', '.join(defs)
 
 #------------------------------------------------------------------------------
 def extract_rule(attrs, key, display_name = None):
