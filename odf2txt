@@ -358,6 +358,22 @@ def extract_style_rules(name, attrs, rules = None):
       if not attr in recognized_table_column_properties:
         rules += ['/* unhandled %s attribute \'%s\' */' % (name[6:], attr)]
 
+  elif name == 'style:tab-stops':
+    rules += ['tab-stops: none;']
+
+  elif name == 'style:tab-stop':
+    text = attrs['style:position']
+    if 'style:type' in attrs:
+      text += ' ' + attrs['style:type']
+
+    for i,rule in enumerate(rules):
+      if rule.startswith('tab-stops:'):
+        if rule == 'tab-stops: none;':
+          rules[i] = rule.replace('none', text)
+        else:
+          rules[i] = '%s, %s;' % (rule[:-1], text)
+        break
+
   else:
     return ['/* unhandled tag \'%s\' */' % name]
 
