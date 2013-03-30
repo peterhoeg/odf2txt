@@ -680,6 +680,9 @@ class styled_content_parser(simple_content_parser):
 
   #----------------------------------------------------------------------------
   def characters(self, content):
+    content = content.replace('&', '&amp;')
+    content = content.replace('<', '&lt;')
+    content = content.replace('>', '&gt;')
     self.text += content
     if content.find('\n') >= 0:
       self.flushText()
