@@ -242,8 +242,9 @@ def extract_edge_rules(attrs, key, display_name = None):
          extract_rule(attrs, key + '-bottom', display_name + '-bottom')
 
 #------------------------------------------------------------------------------
-def extract_style_rules(name, attrs):
-  rules = []
+def extract_style_rules(name, attrs, rules = None):
+  if rules is None:
+    rules = []
 
   if name == 'style:paragraph-properties':
     rules += extract_rule(attrs, 'fo:background-color')
@@ -508,7 +509,7 @@ def make_styled_tag(name, attrs, name_key = 'text:style-name'):
     if style_name in defined_styles:
       return '<%s class=\"%s\">' % (name, defined_styles[style_name])
     elif style_name in inline_styles:
-      rules = inline_styles[style_name]
+      rules = ' '.join(inline_styles[style_name])
       if style_name in inline_styles_parents:
         parent = inline_styles_parents[style_name]
         return '<%s class=\"%s\" style=\"%s\">' % (name, parent, rules)
@@ -539,13 +540,8 @@ class styled_content_parser(simple_content_parser):
       self.reinterpret_next = None
 
     elif self.in_style is not None:
-      rules = extract_style_rules(name, attrs)
-      if len(rules):
-        old_rules = inline_styles[self.in_style]
-        if len(old_rules):
-          rules = [old_rules] + rules
-
-        inline_styles[self.in_style] = ' '.join(rules)
+      rules = extract_style_rules(name, attrs, inline_styles[self.in_style])
+      inline_styles[self.in_style] = rules
 
     elif self.in_body:
       self.flushText()
@@ -609,7 +605,7 @@ class styled_content_parser(simple_content_parser):
 
     elif name == 'style:style':
       self.in_style = attrs['style:name']
-      inline_styles[self.in_style] = ''
+      inline_styles[self.in_style] = []
       if 'style:parent-style-name' in attrs:
         parent = attrs['style:parent-style-name']
         if parent != 'Standard' and parent in defined_styles:
